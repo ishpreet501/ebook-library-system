@@ -18,7 +18,9 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin:'https://ebook-library-system.onrender.com'
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
