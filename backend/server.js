@@ -18,9 +18,7 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors({
-  origin: 'https://ebook-library-system-f78k.vercel.app'
-}));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
