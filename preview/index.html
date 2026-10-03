@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BookShelf • Digital E-Book Library (MongoDB Connected)</title>
+  
+  <!-- Tailwind CSS Framework -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Clean Google Fonts: Plus Jakarta Sans, Playfair Display, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- React 18 & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 1. Global Typography & Background */
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background: #faf8f5;
+      color: #0f172a;
+      min-height: 100vh;
+    }
+    .font-serif-book { font-family: 'Playfair Display', Georgia, serif; }
+    .font-mono-code { font-family: 'JetBrains Mono', monospace; }
+
+    /* 2. Realistic 3D Physical Book Card */
+    .book-card-3d {
+      perspective: 1200px;
+      transition: transform 0.3s ease;
+    }
+    .book-card-3d:hover {
+      transform: translateY(-6px);
+    }
+
+    .book-cover-3d {
+      position: relative;
+      border-radius: 6px 14px 14px 6px;
+      overflow: hidden;
+      box-shadow: -4px 6px 14px rgba(15, 23, 42, 0.16), 0 16px 28px -6px rgba(15, 23, 42, 0.22);
+      transition: all 0.35s ease;
+    }
+    .book-card-3d:hover .book-cover-3d {
+      transform: rotateY(-10deg) scale(1.02);
+      box-shadow: -10px 14px 25px rgba(15, 23, 42, 0.25), 0 25px 40px -8px rgba(15, 23, 42, 0.3);
+    }
+
+    /* Spine crease shadow */
+    .book-cover-3d::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      width: 14px;
+      background: linear-gradient(to right, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.15) 25%, rgba(255,255,255,0.35) 50%, rgba(0,0,0,0.1) 75%, transparent 100%);
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* Protruding stacked page edge */
+    .book-cover-3d::after {
+      content: '';
+      position: absolute;
+      top: 2px; right: -4px; bottom: 2px;
+      width: 5px;
+      background: repeating-linear-gradient(to bottom, #ffffff 0px, #e2e8f0 2px);
+      border-radius: 0 3px 3px 0;
+      box-shadow: 1px 0 3px rgba(0,0,0,0.15);
+      z-index: 2;
+    }
+
+    /* Satin bookmark ribbon */
+    .ribbon-bookmark {
+      position: absolute;
+      top: -3px; right: 20px;
+      width: 12px; height: 26px;
+      background: #d97706;
+      border-radius: 2px 2px 0 0;
+      box-shadow: 0 3px 5px rgba(0,0,0,0.25);
+      z-index: 15;
+    }
+    .ribbon-bookmark::after {
+      content: '';
+      position: absolute;
+      bottom: -5px; left: 0;
+      border-left: 6px solid #d97706;
+      border-right: 6px solid #d97706;
+      border-bottom: 5px solid transparent;
+    }
+
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.04);
+    }
+
+    /* Reader Theme Modes */
+    .reader-sepia { background-color: #f7f0e1 !important; color: #3b2c1d !important; }
+    .reader-sepia .reader-paper { background-color: #ece3cf !important; color: #2e2013 !important; border-color: #decfae !important; }
+    .reader-ivory { background-color: #fafaf9 !important; color: #1e293b !important; }
+    .reader-ivory .reader-paper { background-color: #ffffff !important; color: #0f172a !important; border-color: #e2e8f0 !important; }
+    .reader-dark { background-color: #0b0f19 !important; color: #cbd5e1 !important; }
+    .reader-dark .reader-paper { background-color: #131b2e !important; color: #f1f5f9 !important; border-color: #1e293b !important; }
+  </style>
+</head>
+<body class="selection:bg-amber-300 selection:text-slate-900">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // =====================================================================
+    // 1. CENTRALIZED BASE_URL CONFIGURATION (MongoDB Backend)
+    // =====================================================================
+    const API_BASE_URL = 'http://localhost:5000/api';
+    const DEFAULT_COVER = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=600&q=80';
+
+    // Simple Reusable Vector Icons
+    const Icon = {
+      Book: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+      Bookmark: ({ filled }) => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>,
+      Download: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+      Search: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+      Star: () => <svg className="w-4 h-4 inline text-amber-500 fill-current" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+      Lock: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
+      Shield: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+      User: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+      ArrowLeft: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+      Close: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+      Grid: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>,
+      List: () => <svg className="w-4 h-4 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+    };
+
+    function App() {
+      // --- 2. STATE (LOADED DIRECTLY FROM MONGODB) ---
+      const [currentTab, setCurrentTab] = useState('home');
+      const [books, setBooks] = useState([]);
+      const [authors, setAuthors] = useState([]);
+      const [categories, setCategories] = useState([]);
+      const [savedBookIds, setSavedBookIds] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [dbStatus, setDbStatus] = useState('Checking MongoDB...');
+
+      // Current Auth User (Session JWT token)
+      const [currentUser, setCurrentUser] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('ebook_user')) || null; } catch(e) { return null; }
+      });
+      const [token, setToken] = useState(() => localStorage.getItem('ebook_token') || null);
+
+      // Selected items & Reader
+      const [selectedBook, setSelectedBook] = useState(null);
+      const [readingBook, setReadingBook] = useState(null);
+      const [chapterIndex, setChapterIndex] = useState(0);
+      const [readerTheme, setReaderTheme] = useState('sepia');
+      const [readerFontSize, setReaderFontSize] = useState('text-lg');
+
+      // Filters & Search
+      const [searchQuery, setSearchQuery] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('all');
+      const [selectedAuthor, setSelectedAuthor] = useState('all');
+      const [sortBy, setSortBy] = useState('popular');
+      const [viewMode, setViewMode] = useState('grid');
+
+      // Modals
+      const [authModal, setAuthModal] = useState({ isOpen: false, reason: 'read' });
+      const [adminBookModal, setAdminBookModal] = useState(false);
+      const [toastText, setToastText] = useState('');
+
+      // Forms
+      const [userEmail, setUserEmail] = useState('');
+      const [userPassword, setUserPassword] = useState('');
+      const [userName, setUserName] = useState('');
+      const [isSignUp, setIsSignUp] = useState(false);
+      const [authError, setAuthError] = useState('');
+
+      const [adminEmail, setAdminEmail] = useState('');
+      const [adminPassword, setAdminPassword] = useState('');
+      const [adminError, setAdminError] = useState('');
+
+      const [bookForm, setBookForm] = useState({
+        title: '', subtitle: '', authorId: '', categoryId: '',
+        pages: 300, year: 2024, isbn: '978-0000000000', cover: DEFAULT_COVER,
+        description: '', chapters: [{ title: 'Chapter 1', content: 'Chapter content...' }]
+      });
+
+      const showToast = (msg) => {
+        setToastText(msg);
+        setTimeout(() => setToastText(''), 3000);
+      };
+
+      const isAuthenticated = Boolean(currentUser);
+      const isAdmin = currentUser && currentUser.role === 'admin';
+
+      // --- 3. FETCH DATA DIRECTLY FROM MONGODB ---
+      const fetchFromMongoDB = async () => {
+        setLoading(true);
+        try {
+          const [booksRes, authorsRes, catsRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/books`).then(r => r.json()),
+            fetch(`${API_BASE_URL}/authors`).then(r => r.json()),
+            fetch(`${API_BASE_URL}/categories`).then(r => r.json())
+          ]);
+
+          if (booksRes.success) setBooks(booksRes.data || []);
+          if (authorsRes.success) setAuthors(authorsRes.data || []);
+          if (catsRes.success) setCategories(catsRes.data || []);
+          setDbStatus('Connected to MongoDB');
+        } catch (err) {
+          console.error('MongoDB fetch error:', err);
+          setDbStatus('MongoDB Offline (Check backend on port 5000)');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Initial load from MongoDB on startup
+      useEffect(() => {
+        fetchFromMongoDB();
+      }, []);
+
+      // Two-way URL Hash navigation
+      const navigateTo = (tabName, extra = {}) => {
+        if (tabName === 'home') window.location.hash = '#home';
+        else if (tabName === 'books') {
+          if (extra.category) setSelectedCategory(extra.category);
+          if (extra.author) setSelectedAuthor(extra.author);
+          window.location.hash = '#books';
+        }
+        else if (tabName === 'authors') window.location.hash = '#authors';
+        else if (tabName === 'categories') window.location.hash = '#categories';
+        else if (tabName === 'shelf') window.location.hash = '#shelf';
+        else if (tabName === 'login') window.location.hash = '#login';
+        else if (tabName === 'admin') window.location.hash = '#admin';
+        else if (tabName === 'detail' && extra.book) {
+          setSelectedBook(extra.book);
+          window.location.hash = `#book/${extra.book._id || extra.book.id}`;
+        }
+        setCurrentTab(tabName);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      useEffect(() => {
+        const handleHashChange = () => {
+          const hash = (window.location.hash || '').toLowerCase();
+          if (!hash || hash === '#' || hash === '#home') setCurrentTab('home');
+          else if (hash === '#books') setCurrentTab('books');
+          else if (hash === '#authors') setCurrentTab('authors');
+          else if (hash === '#categories') setCurrentTab('categories');
+          else if (hash === '#shelf') setCurrentTab('shelf');
+          else if (hash === '#login') setCurrentTab('login');
+          else if (hash === '#admin' || hash === '#admin-login') {
+            if (currentUser && currentUser.role === 'admin') setCurrentTab('admin-panel');
+            else setCurrentTab('admin-login');
+          }
+          else if (hash.startsWith('#book/')) {
+            const id = hash.replace('#book/', '');
+            const found = books.find(b => (b._id || b.id).toLowerCase() === id);
+            if (found) {
+              setSelectedBook(found);
+              setCurrentTab('detail');
+            } else {
+              setCurrentTab('books');
+            }
+          }
+        };
+        handleHashChange();
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+      }, [currentUser, books]);
+
+      // --- 4. AUTHENTICATION VIA MONGODB USER COLLECTION ---
+      const handleUserAuth = async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        try {
+          const url = isSignUp ? `${API_BASE_URL}/auth/register` : `${API_BASE_URL}/auth/login`;
+          const payload = isSignUp ? { name: userName, email: userEmail, password: userPassword } : { email: userEmail, password: userPassword };
+          
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(r => r.json());
+
+          if (res.success && res.data) {
+            setCurrentUser(res.data);
+            setToken(res.data.token);
+            localStorage.setItem('ebook_token', res.data.token);
+            localStorage.setItem('ebook_user', JSON.stringify(res.data));
+            navigateTo('books');
+            showToast(`Welcome, ${res.data.name}!`);
+          } else {
+            setAuthError(res.message || 'Authentication failed');
+          }
+        } catch (err) {
+          setAuthError('Cannot reach MongoDB server. Please ensure backend is running.');
+        }
+      };
+
+      const handleAdminAuth = async (e) => {
+        e.preventDefault();
+        setAdminError('');
+        try {
+          const res = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: adminEmail, password: adminPassword })
+          }).then(r => r.json());
+
+          if (res.success && res.data && res.data.role === 'admin') {
+            setCurrentUser(res.data);
+            setToken(res.data.token);
+            localStorage.setItem('ebook_token', res.data.token);
+            localStorage.setItem('ebook_user', JSON.stringify(res.data));
+            navigateTo('admin');
+            showToast('Admin clearance verified from MongoDB');
+          } else {
+            setAdminError(res.message || 'Invalid administrator credentials');
+          }
+        } catch (err) {
+          setAdminError('Backend server connection error');
+        }
+      };
+
+      const handleSignOut = () => {
+        setCurrentUser(null);
+        setToken(null);
+        localStorage.removeItem('ebook_token');
+        localStorage.removeItem('ebook_user');
+        navigateTo('home');
+        showToast('Signed out');
+      };
+
+      // --- 5. GUARDS: GUESTS CANNOT READ OR DOWNLOAD ---
+      const handleOpenReader = (book) => {
+        if (!isAuthenticated) {
+          setAuthModal({ isOpen: true, reason: 'read' });
+          return;
+        }
+        setReadingBook(book);
+        setChapterIndex(0);
+      };
+
+      const handleDownloadBook = async (book) => {
+        if (!isAuthenticated) {
+          setAuthModal({ isOpen: true, reason: 'download' });
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/books/${book._id || book.id}/download`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (!res.ok) {
+            showToast('Download authorization failed');
+            return;
+          }
+
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${book.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          showToast(`Downloaded "${book.title}" from MongoDB`);
+        } catch (err) {
+          console.error(err);
+          showToast('Download error occurred');
+        }
+      };
+
+      // Helper functions for author and category resolution
+      const getAuthorName = (book) => {
+        if (book.author && typeof book.author === 'object') return book.author.name;
+        const found = authors.find(a => (a._id || a.id) === book.author);
+        return found ? found.name : 'Author';
+      };
+
+      const getCategoryName = (book) => {
+        if (book.category && typeof book.category === 'object') return book.category.name;
+        const found = categories.find(c => (c._id || c.id) === book.category);
+        return found ? found.name : 'General';
+      };
+
+      // --- 6. ADMIN CREATE PUBLICATION (DIRECT MONGODB MUTATION) ---
+      const handleSaveBook = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(`${API_BASE_URL}/books`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              title: bookForm.title,
+              subtitle: bookForm.subtitle,
+              author: bookForm.authorId || (authors[0] && (authors[0]._id || authors[0].id)),
+              category: bookForm.categoryId || (categories[0] && (categories[0]._id || categories[0].id)),
+              pageCount: bookForm.pages,
+              publishedYear: bookForm.year,
+              isbn: bookForm.isbn,
+              coverImage: bookForm.cover || DEFAULT_COVER,
+              description: bookForm.description,
+              chapters: bookForm.chapters
+            })
+          }).then(r => r.json());
+
+          if (res.success) {
+            await fetchFromMongoDB();
+            setAdminBookModal(false);
+            showToast('New book successfully stored in MongoDB');
+          } else {
+            alert(res.message || 'Error creating book in MongoDB');
+          }
+        } catch (err) {
+          alert('Could not save to MongoDB. Please check backend connection.');
+        }
+      };
+
+      const handleDeleteBook = async (id) => {
+        if (!confirm('Permanently delete this publication from MongoDB?')) return;
+        try {
+          const res = await fetch(`${API_BASE_URL}/books/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }).then(r => r.json());
+
+          if (res.success) {
+            setBooks(prev => prev.filter(b => (b._id || b.id) !== id));
+            showToast('Publication deleted from MongoDB');
+          }
+        } catch (err) {
+          alert('Failed to delete book');
+        }
+      };
+
+      // Filter & Sort
+      const filteredBooks = useMemo(() => {
+        return books.filter(b => {
+          const title = (b.title || '').toLowerCase();
+          const desc = (b.description || '').toLowerCase();
+          const isbn = (b.isbn || '').toLowerCase();
+          const author = getAuthorName(b).toLowerCase();
+          const q = searchQuery.toLowerCase();
+
+          const matchQuery = !searchQuery || title.includes(q) || desc.includes(q) || isbn.includes(q) || author.includes(q);
+          const matchCat = selectedCategory === 'all' || (b.category && (b.category._id || b.category.slug || b.category) === selectedCategory);
+          const matchAuth = selectedAuthor === 'all' || (b.author && (b.author._id || b.author) === selectedAuthor);
+
+          return matchQuery && matchCat && matchAuth;
+        });
+      }, [books, searchQuery, selectedCategory, selectedAuthor]);
+
+      return (
+        <div className="min-h-screen flex flex-col font-sans">
+          
+          {/* Toast */}
+          {toastText && (
+            <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>{toastText}</span>
+            </div>
+          )}
+
+          {/* Auth Gate Modal */}
+          {authModal.isOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative">
+                <button onClick={() => setAuthModal({ isOpen: false, reason: 'read' })} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700">
+                  <Icon.Close />
+                </button>
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto text-lg">
+                  <Icon.Lock />
+                </div>
+                <div>
+                  <h3 className="font-serif-book font-bold text-xl text-slate-900">Sign In Required</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    You must sign in as a registered reader to {authModal.reason === 'read' ? 'read books in the browser' : 'download offline files'}.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setAuthModal({ isOpen: false, reason: 'read' }); navigateTo('login'); }}
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                >
+                  Sign In or Create Account
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Navbar */}
+          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+              
+              <div onClick={() => navigateTo('home')} className="flex items-center gap-2.5 cursor-pointer">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-amber-400 font-bold">
+                  <Icon.Book />
+                </div>
+                <span className="font-serif-book font-bold text-lg text-slate-900">BookShelf</span>
+                <span className="text-[10px] font-mono-code font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  MongoDB
+                </span>
+              </div>
+
+              <nav className="hidden md:flex items-center gap-1 text-xs font-semibold text-slate-600">
+                <button onClick={() => navigateTo('home')} className={`px-3 py-1.5 rounded-xl ${currentTab === 'home' ? 'bg-slate-100 text-slate-900 font-bold' : 'hover:bg-slate-50'}`}>Home</button>
+                <button onClick={() => navigateTo('books')} className={`px-3 py-1.5 rounded-xl ${currentTab === 'books' ? 'bg-slate-100 text-slate-900 font-bold' : 'hover:bg-slate-50'}`}>Browse Books</button>
+                <button onClick={() => navigateTo('authors')} className={`px-3 py-1.5 rounded-xl ${currentTab === 'authors' ? 'bg-slate-100 text-slate-900 font-bold' : 'hover:bg-slate-50'}`}>Authors</button>
+                <button onClick={() => navigateTo('categories')} className={`px-3 py-1.5 rounded-xl ${currentTab === 'categories' ? 'bg-slate-100 text-slate-900 font-bold' : 'hover:bg-slate-50'}`}>Categories</button>
+                <button onClick={() => navigateTo('shelf')} className={`px-3 py-1.5 rounded-xl ${currentTab === 'shelf' ? 'bg-slate-100 text-slate-900 font-bold' : 'hover:bg-slate-50'}`}>
+                  <Icon.Bookmark /> My Shelf
+                </button>
+                {isAdmin && (
+                  <button onClick={() => navigateTo('admin')} className="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 font-bold flex items-center gap-1">
+                    <Icon.Shield /> Admin Console
+                  </button>
+                )}
+              </nav>
+
+              <div className="flex items-center gap-2">
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 hidden sm:inline">{currentUser.name}</span>
+                    <button onClick={handleSignOut} title="Sign Out" className="p-2 text-slate-400 hover:text-rose-600 rounded-xl text-xs">
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => navigateTo('login')} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                    <Icon.User /> <span>Sign In</span>
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </header>
+
+          {/* Main Body */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            {/* Live Database Status Banner */}
+            <div className="mb-6 flex items-center justify-between p-3 rounded-2xl bg-slate-100 border text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="font-semibold text-slate-700">{dbStatus}</span>
+                <span className="text-slate-400 font-mono-code">({API_BASE_URL})</span>
+              </div>
+              <span className="text-slate-500 text-[11px] font-mono-code">{books.length} publications loaded</span>
+            </div>
+
+            {/* TAB 1: HOME */}
+            {currentTab === 'home' && (
+              <div className="space-y-12">
+                <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white p-8 sm:p-12 shadow-xl">
+                  <div className="max-w-2xl space-y-4">
+                    <span className="px-3 py-1 rounded-full bg-white/10 text-amber-300 text-xs font-semibold">MongoDB Backed Digital Library</span>
+                    <h1 className="font-serif-book text-4xl sm:text-5xl font-bold leading-tight">
+                      Where deep reading meets <span className="text-amber-300">craftsmanship.</span>
+                    </h1>
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                      All catalog books, reading sessions, and user accounts are served directly from MongoDB.
+                    </p>
+                    <div className="pt-2 flex flex-wrap gap-3">
+                      <button onClick={() => navigateTo('books')} className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5">
+                        <Icon.Book /> Browse {books.length} Books
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <h2 className="font-serif-book font-bold text-2xl text-slate-900">Featured Publications (MongoDB)</h2>
+                    <button onClick={() => navigateTo('books')} className="text-xs font-bold text-indigo-600 hover:text-indigo-800">View All →</button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {books.slice(0, 4).map(book => (
+                      <div key={book._id || book.id} className="book-card-3d glass-card rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                        <div>
+                          <div onClick={() => navigateTo('detail', { book })} className="book-cover-3d aspect-[3/4] w-full bg-slate-100 cursor-pointer mb-3">
+                            <div className="ribbon-bookmark"></div>
+                            <img src={book.coverImage || book.cover || DEFAULT_COVER} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_COVER; }} />
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                            <span className="font-semibold text-slate-700 truncate">{getAuthorName(book)}</span>
+                            <span className="font-bold flex items-center gap-0.5"><Icon.Star /> {book.rating || '4.8'}</span>
+                          </div>
+                          <h3 onClick={() => navigateTo('detail', { book })} className="font-serif-book font-bold text-base text-slate-900 leading-snug cursor-pointer line-clamp-1 hover:text-indigo-600">
+                            {book.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 line-clamp-2 mt-1">{book.description}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                          <button onClick={() => handleOpenReader(book)} className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1">
+                            <Icon.Book /> Read
+                          </button>
+                          <button onClick={() => handleDownloadBook(book)} title="Download" className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs">
+                            <Icon.Download />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: BROWSE BOOKS */}
+            {currentTab === 'books' && (
+              <div className="space-y-6">
+                <div className="glass-card p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search title, author, or ISBN from MongoDB..."
+                      className="w-full pl-9 pr-4 py-2 bg-slate-50 border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    />
+                    <span className="absolute left-3 top-2.5 text-slate-400"><Icon.Search /></span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="py-2 px-3 bg-slate-100 border rounded-xl font-semibold text-slate-700">
+                      <option value="all">All Genres</option>
+                      {categories.map(c => <option key={c._id || c.id} value={c._id || c.id}>{c.name}</option>)}
+                    </select>
+
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border">
+                      <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-white shadow-xs' : 'text-slate-400'}`}><Icon.Grid /></button>
+                      <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg ${viewMode === 'list' ? 'bg-white shadow-xs' : 'text-slate-400'}`}><Icon.List /></button>
+                    </div>
+                  </div>
+                </div>
+
+                {filteredBooks.length > 0 ? (
+                  viewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {filteredBooks.map(book => (
+                        <div key={book._id || book.id} className="book-card-3d glass-card rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                          <div>
+                            <div onClick={() => navigateTo('detail', { book })} className="book-cover-3d aspect-[3/4] w-full bg-slate-100 cursor-pointer mb-3">
+                              <div className="ribbon-bookmark"></div>
+                              <img src={book.coverImage || book.cover || DEFAULT_COVER} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_COVER; }} />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                              <span className="font-semibold text-slate-700 truncate">{getAuthorName(book)}</span>
+                              <span className="font-bold flex items-center gap-0.5"><Icon.Star /> {book.rating || '4.8'}</span>
+                            </div>
+                            <h3 onClick={() => navigateTo('detail', { book })} className="font-serif-book font-bold text-base text-slate-900 leading-snug cursor-pointer line-clamp-1 hover:text-indigo-600">
+                              {book.title}
+                            </h3>
+                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">{book.description}</p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                            <button onClick={() => handleOpenReader(book)} className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1">
+                              <Icon.Book /> Read
+                            </button>
+                            <button onClick={() => handleDownloadBook(book)} title="Download" className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs">
+                              <Icon.Download />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="glass-card rounded-2xl overflow-hidden border">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b text-slate-400 font-mono-code uppercase text-[10px]">
+                          <tr>
+                            <th className="p-3">Title</th>
+                            <th className="p-3">Author</th>
+                            <th className="p-3">Genre</th>
+                            <th className="p-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredBooks.map(b => (
+                            <tr key={b._id || b.id} className="hover:bg-slate-50/60">
+                              <td className="p-3 flex items-center gap-2.5 font-bold text-slate-900">
+                                <img src={b.coverImage || b.cover || DEFAULT_COVER} className="w-7 h-9 rounded object-cover" />
+                                <span>{b.title}</span>
+                              </td>
+                              <td className="p-3 text-slate-600">{getAuthorName(b)}</td>
+                              <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold">{getCategoryName(b)}</span></td>
+                              <td className="p-3 text-right space-x-1.5">
+                                <button onClick={() => handleOpenReader(b)} className="px-2.5 py-1 bg-slate-900 text-white rounded font-bold">Read</button>
+                                <button onClick={() => handleDownloadBook(b)} className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded font-semibold">Download</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                ) : (
+                  <p className="p-8 text-center text-slate-400 text-xs">No publications found in MongoDB.</p>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: AUTHORS */}
+            {currentTab === 'authors' && (
+              <div className="space-y-6">
+                <div className="border-b pb-3">
+                  <h1 className="font-serif-book font-bold text-2xl text-slate-900">Authors (MongoDB Collection)</h1>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {authors.map(author => (
+                    <div key={author._id || author.id} className="glass-card rounded-2xl p-5 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <img src={author.photoUrl || author.photo || DEFAULT_COVER} className="w-14 h-14 rounded-xl object-cover" />
+                        <div>
+                          <h3 className="font-serif-book font-bold text-base text-slate-900">{author.name}</h3>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded">{author.nationality || author.role}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">{author.biography || author.bio}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: CATEGORIES */}
+            {currentTab === 'categories' && (
+              <div className="space-y-6">
+                <div className="border-b pb-3">
+                  <h1 className="font-serif-book font-bold text-2xl text-slate-900">Categories (MongoDB Collection)</h1>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {categories.map(cat => (
+                    <div key={cat._id || cat.id} className="glass-card rounded-2xl p-5 space-y-3">
+                      <h3 className="font-serif-book font-bold text-lg text-slate-900">{cat.name}</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">{cat.description || cat.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: BOOK DETAIL */}
+            {currentTab === 'detail' && selectedBook && (
+              <div className="space-y-6">
+                <button onClick={() => navigateTo('books')} className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1">
+                  <Icon.ArrowLeft /> Back to Catalog
+                </button>
+                <div className="glass-card rounded-3xl p-6 sm:p-10 grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+                  <div className="md:col-span-4 flex flex-col items-center">
+                    <div className="book-cover-3d w-56 aspect-[3/4] mb-4">
+                      <div className="ribbon-bookmark"></div>
+                      <img src={selectedBook.coverImage || selectedBook.cover || DEFAULT_COVER} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="w-56 space-y-2">
+                      <button onClick={() => handleOpenReader(selectedBook)} className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow">
+                        <Icon.Book /> Read Online
+                      </button>
+                      <button onClick={() => handleDownloadBook(selectedBook)} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                        <Icon.Download /> Download from MongoDB
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-8 space-y-4">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                        {getCategoryName(selectedBook)}
+                      </span>
+                      <h1 className="font-serif-book font-bold text-3xl text-slate-900 mt-2">{selectedBook.title}</h1>
+                      <p className="text-sm text-slate-500 font-medium">{selectedBook.subtitle}</p>
+                    </div>
+
+                    <p className="text-xs text-slate-700 font-mono-code">
+                      By {getAuthorName(selectedBook)} • {selectedBook.pageCount || selectedBook.pages} Pages • ISBN: {selectedBook.isbn}
+                    </p>
+
+                    <div className="space-y-1">
+                      <h3 className="font-serif-book font-bold text-sm text-slate-900">Synopsis</h3>
+                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">{selectedBook.description}</p>
+                    </div>
+
+                    {selectedBook.chapters && selectedBook.chapters.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        <h3 className="font-serif-book font-bold text-sm text-slate-900">Chapters</h3>
+                        {selectedBook.chapters.map((ch, idx) => (
+                          <div key={idx} onClick={() => { handleOpenReader(selectedBook); setChapterIndex(idx); }} className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer flex justify-between text-xs font-medium border">
+                            <span>Chapter {idx + 1}: {ch.title}</span>
+                            <span className="text-indigo-600 font-bold">Read →</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: READER SIGN IN */}
+            {currentTab === 'login' && (
+              <div className="min-h-[50vh] flex items-center justify-center p-4">
+                <div className="glass-card rounded-3xl max-w-sm w-full p-8 space-y-5">
+                  <div className="text-center space-y-1">
+                    <h2 className="font-serif-book font-bold text-2xl text-slate-900">{isSignUp ? 'Register (MongoDB)' : 'Reader Sign In'}</h2>
+                    <p className="text-xs text-slate-500">Connected to User collection in MongoDB</p>
+                  </div>
+                  {authError && <p className="text-xs text-rose-600 font-semibold">{authError}</p>}
+                  <form onSubmit={handleUserAuth} className="space-y-3 text-xs">
+                    {isSignUp && (
+                      <div>
+                        <label className="font-bold block mb-1">Full Name</label>
+                        <input required value={userName} onChange={e => setUserName(e.target.value)} placeholder="Jane Doe" className="w-full p-2.5 bg-slate-50 border rounded-xl" />
+                      </div>
+                    )}
+                    <div>
+                      <label className="font-bold block mb-1">Email</label>
+                      <input required type="email" value={userEmail} onChange={e => setUserEmail(e.target.value)} placeholder="reader@ebooklib.com" className="w-full p-2.5 bg-slate-50 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="font-bold block mb-1">Password</label>
+                      <input required type="password" value={userPassword} onChange={e => setUserPassword(e.target.value)} placeholder="••••••••••••" className="w-full p-2.5 bg-slate-50 border rounded-xl" />
+                    </div>
+                    <button type="submit" className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold shadow-md">
+                      {isSignUp ? 'Register Account' : 'Sign In'}
+                    </button>
+                  </form>
+                  <div className="text-center pt-2">
+                    <button onClick={() => { setIsSignUp(!isSignUp); setAuthError(''); }} className="text-xs text-indigo-600 font-bold">
+                      {isSignUp ? 'Already registered? Sign In' : 'New reader? Create free account →'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: SECRET DIRECT URL ADMIN LOGIN (#admin) */}
+            {currentTab === 'admin-login' && !isAdmin && (
+              <div className="min-h-[50vh] flex items-center justify-center p-4">
+                <div className="glass-card rounded-3xl max-w-sm w-full p-8 space-y-5 border-amber-300">
+                  <div className="text-center space-y-1">
+                    <span className="text-[10px] font-mono-code font-bold uppercase text-amber-900 bg-amber-100 px-2 py-0.5 rounded">Restricted Staff Portal</span>
+                    <h2 className="font-serif-book font-bold text-2xl text-slate-900 pt-2">Admin Sign In</h2>
+                    <p className="text-xs text-slate-500">Authenticated via MongoDB Role Check</p>
+                  </div>
+                  {adminError && <p className="text-xs text-rose-600 font-semibold">{adminError}</p>}
+                  <form onSubmit={handleAdminAuth} className="space-y-3 text-xs">
+                    <div>
+                      <label className="font-bold block mb-1">Admin Email</label>
+                      <input required type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="admin@ebooklib.com" className="w-full p-2.5 bg-slate-50 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="font-bold block mb-1">Password</label>
+                      <input required type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} placeholder="••••••••••••" className="w-full p-2.5 bg-slate-50 border rounded-xl" />
+                    </div>
+                    <button type="submit" className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md">
+                      Unlock Admin Console
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 8: ADMIN DASHBOARD (DIRECT MONGODB MUTATIONS) */}
+            {currentTab === 'admin-panel' && isAdmin && (
+              <div className="space-y-6">
+                <div className="glass-card p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-amber-50/40 border-amber-200">
+                  <div>
+                    <h1 className="font-serif-book font-bold text-2xl text-slate-900">Admin Control Console</h1>
+                    <p className="text-xs text-slate-500">Live MongoDB Collections Manager</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setAdminBookModal(true)}
+                      className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm"
+                    >
+                      + Add Publication to MongoDB
+                    </button>
+                    <button onClick={handleSignOut} className="px-3 py-2 bg-white text-rose-600 rounded-xl text-xs font-bold border">
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+
+                <div className="glass-card rounded-2xl overflow-hidden border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b text-slate-400 font-mono-code uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Title & Cover</th>
+                        <th className="p-3">Author</th>
+                        <th className="p-3">Genre</th>
+                        <th className="p-3">Stats</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {books.map(b => (
+                        <tr key={b._id || b.id} className="hover:bg-slate-50/60">
+                          <td className="p-3 flex items-center gap-2.5 font-bold text-slate-900">
+                            <img src={b.coverImage || b.cover || DEFAULT_COVER} className="w-7 h-9 rounded object-cover" />
+                            <span>{b.title}</span>
+                          </td>
+                          <td className="p-3 text-slate-600">{getAuthorName(b)}</td>
+                          <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold">{getCategoryName(b)}</span></td>
+                          <td className="p-3 font-mono-code text-[11px] text-slate-500">{b.readsCount || 0} reads • {b.downloadsCount || 0} dl</td>
+                          <td className="p-3 text-right space-x-1.5 font-bold">
+                            <button onClick={() => handleDeleteBook(b._id || b.id)} className="px-2.5 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100">
+                              Delete from MongoDB
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* Reader Modal */}
+          {readingBook && (
+            <div className={`fixed inset-0 z-50 flex flex-col reader-${readerTheme}`}>
+              <div className="px-6 py-3 border-b flex items-center justify-between text-xs backdrop-blur-md">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setReadingBook(null)} className="px-3 py-1.5 rounded-xl bg-black/5 font-bold">
+                    <Icon.ArrowLeft /> Exit
+                  </button>
+                  <span className="font-serif-book font-bold text-sm truncate max-w-xs">{readingBook.title}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-black/5 p-0.5 rounded-xl text-[11px] font-bold">
+                    <button onClick={() => setReaderTheme('sepia')} className={`px-2 py-1 rounded-lg ${readerTheme === 'sepia' ? 'bg-amber-100 text-amber-900' : ''}`}>Sepia</button>
+                    <button onClick={() => setReaderTheme('ivory')} className={`px-2 py-1 rounded-lg ${readerTheme === 'ivory' ? 'bg-white text-slate-900' : ''}`}>Day</button>
+                    <button onClick={() => setReaderTheme('dark')} className={`px-2 py-1 rounded-lg ${readerTheme === 'dark' ? 'bg-slate-900 text-white' : ''}`}>Night</button>
+                  </div>
+                  <div className="flex items-center bg-black/5 p-0.5 rounded-xl font-mono-code text-[11px]">
+                    <button onClick={() => setReaderFontSize('text-base')} className="px-2 py-1">A-</button>
+                    <button onClick={() => setReaderFontSize('text-xl')} className="px-2 py-1 font-bold">A+</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 md:p-12 flex justify-center">
+                <div className="reader-paper max-w-2xl w-full p-8 md:p-14 rounded-3xl shadow-xl border space-y-6">
+                  {readingBook.chapters && readingBook.chapters[chapterIndex] ? (
+                    <div className="space-y-4">
+                      <div className="border-b pb-4 text-center">
+                        <span className="text-[10px] font-mono-code uppercase opacity-60">Chapter {chapterIndex + 1} of {readingBook.chapters.length}</span>
+                        <h2 className="font-serif-book font-bold text-2xl mt-1">{readingBook.chapters[chapterIndex].title}</h2>
+                      </div>
+                      <div className={`${readerFontSize} font-serif-book leading-relaxed whitespace-pre-line space-y-4`}>
+                        {readingBook.chapters[chapterIndex].content}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-center opacity-60">Full publication contents loaded from MongoDB.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Add Book Modal */}
+          {adminBookModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-xs">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <h3 className="font-serif-book font-bold text-lg text-slate-900">Add Publication (Direct to MongoDB)</h3>
+                  <button onClick={() => setAdminBookModal(false)}><Icon.Close /></button>
+                </div>
+                <form onSubmit={handleSaveBook} className="space-y-3">
+                  <div>
+                    <label className="font-bold block mb-1">Title</label>
+                    <input required value={bookForm.title} onChange={e => setBookForm({...bookForm, title: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="font-bold block mb-1">Author</label>
+                      <select value={bookForm.authorId} onChange={e => setBookForm({...bookForm, authorId: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg">
+                        {authors.map(a => <option key={a._id || a.id} value={a._id || a.id}>{a.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold block mb-1">Genre Category</label>
+                      <select value={bookForm.categoryId} onChange={e => setBookForm({...bookForm, categoryId: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg">
+                        {categories.map(c => <option key={c._id || c.id} value={c._id || c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="font-bold block mb-1">Synopsis</label>
+                    <textarea rows="3" required value={bookForm.description} onChange={e => setBookForm({...bookForm, description: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg" />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2 border-t">
+                    <button type="button" onClick={() => setAdminBookModal(false)} className="px-3 py-1.5 font-bold text-slate-500">Cancel</button>
+                    <button type="submit" className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-bold">Save to MongoDB</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <footer className="border-t border-slate-200/80 bg-white/70 py-8 mt-16 text-slate-500 text-xs">
+            <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-serif-book font-bold text-slate-900 text-sm">BookShelf</span>
+                <span>•</span>
+                <span>MERN Stack (MongoDB + Express + React + Node.js)</span>
+              </div>
+              <p className="text-slate-400 font-mono-code">Database: mongodb://127.0.0.1:27017/ebook_library</p>
+            </div>
+          </footer>
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

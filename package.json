@@ -1,0 +1,14 @@
+{
+  "name": "ebook-library-management-system",
+  "version": "1.0.0",
+  "description": "Full-stack E-Book Library Management System (MERN Stack)",
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "seed": "cd backend && npm run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
