@@ -19,7 +19,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin:'https://ebook-library-system.onrender.com'
+  origin:'ebook-library-system-f78k.vercel.app'
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
