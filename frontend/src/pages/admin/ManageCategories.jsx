@@ -42,16 +42,22 @@ export const ManageCategories = () => {
     const slug = formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const payload = { ...formData, slug };
 
+    let res;
     if (editingCatId) {
-      await updateCategory(editingCatId, payload);
+      res = await updateCategory(editingCatId, payload);
     } else {
-      await addCategory(payload);
+      res = await addCategory(payload);
+    }
+
+    if (res && res.success === false) {
+      alert(res.message || 'Failed to save category.');
+      return;
     }
 
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id, name) => {
+  const handleDelete = async (id, name) => {
     const catBooks = allBooks.filter((b) => b.category?._id === id || b.category === id);
     if (catBooks.length > 0) {
       alert(`Cannot delete "${name}" because it contains ${catBooks.length} book(s). Please move or delete the books first.`);
@@ -59,7 +65,10 @@ export const ManageCategories = () => {
     }
 
     if (window.confirm(`Are you sure you want to delete category "${name}"?`)) {
-      deleteCategory(id);
+      const res = await deleteCategory(id);
+      if (res && res.success === false) {
+        alert(res.message || 'Failed to delete category.');
+      }
     }
   };
 

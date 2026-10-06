@@ -82,10 +82,16 @@ export const ManageBooks = ({ onSelectBook }) => {
       return;
     }
 
+    let res;
     if (editingBookId) {
-      await updateBook(editingBookId, formData);
+      res = await updateBook(editingBookId, formData);
     } else {
-      await addBook(formData);
+      res = await addBook(formData);
+    }
+
+    if (res && res.success === false) {
+      alert(res.message || 'Failed to save book.');
+      return;
     }
 
     setIsModalOpen(false);

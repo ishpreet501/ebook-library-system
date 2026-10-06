@@ -43,16 +43,22 @@ export const ManageAuthors = () => {
       return;
     }
 
+    let res;
     if (editingAuthorId) {
-      await updateAuthor(editingAuthorId, formData);
+      res = await updateAuthor(editingAuthorId, formData);
     } else {
-      await addAuthor(formData);
+      res = await addAuthor(formData);
+    }
+
+    if (res && res.success === false) {
+      alert(res.message || 'Failed to save author.');
+      return;
     }
 
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id, name) => {
+  const handleDelete = async (id, name) => {
     const authorBooks = allBooks.filter((b) => b.author?._id === id || b.author === id);
     if (authorBooks.length > 0) {
       alert(`Cannot delete ${name} because they have ${authorBooks.length} book(s) in the catalog. Please delete or reassign their books first.`);
@@ -60,7 +66,10 @@ export const ManageAuthors = () => {
     }
 
     if (window.confirm(`Are you sure you want to delete author "${name}"?`)) {
-      deleteAuthor(id);
+      const res = await deleteAuthor(id);
+      if (res && res.success === false) {
+        alert(res.message || 'Failed to delete author.');
+      }
     }
   };
 

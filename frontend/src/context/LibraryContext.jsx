@@ -134,7 +134,19 @@ export const LibraryProvider = ({ children }) => {
     try {
       const res = await api.createBook(bookData);
       if (res.success && res.data) {
-        // Refetch fresh data from MongoDB to ensure clean relations
+        await fetchLibraryData();
+        return { success: true };
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const updateBook = async (id, bookData) => {
+    try {
+      const res = await api.updateBook(id, bookData);
+      if (res.success && res.data) {
         await fetchLibraryData();
         return { success: true };
       }
@@ -153,6 +165,86 @@ export const LibraryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false, message: res.message };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Author Operations
+  const addAuthor = async (authorData) => {
+    try {
+      const res = await api.createAuthor(authorData);
+      if (res.success && res.data) {
+        await fetchLibraryData();
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to create author' };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const updateAuthor = async (id, authorData) => {
+    try {
+      const res = await api.updateAuthor(id, authorData);
+      if (res.success && res.data) {
+        await fetchLibraryData();
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to update author' };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteAuthor = async (id) => {
+    try {
+      const res = await api.deleteAuthor(id);
+      if (res.success) {
+        setAuthors(prev => prev.filter(a => a._id !== id));
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to delete author' };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Category Operations
+  const addCategory = async (categoryData) => {
+    try {
+      const res = await api.createCategory(categoryData);
+      if (res.success && res.data) {
+        await fetchLibraryData();
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to create category' };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const updateCategory = async (id, categoryData) => {
+    try {
+      const res = await api.updateCategory(id, categoryData);
+      if (res.success && res.data) {
+        await fetchLibraryData();
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to update category' };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteCategory = async (id) => {
+    try {
+      const res = await api.deleteCategory(id);
+      if (res.success) {
+        setCategories(prev => prev.filter(c => c._id !== id));
+        return { success: true };
+      }
+      return { success: false, message: res.message || 'Failed to delete category' };
     } catch (err) {
       return { success: false, message: err.message };
     }
@@ -219,7 +311,14 @@ export const LibraryProvider = ({ children }) => {
         closeAuthPrompt,
         toggleBookmark,
         addBook,
+        updateBook,
         deleteBook,
+        addAuthor,
+        updateAuthor,
+        deleteAuthor,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         refreshLibrary: fetchLibraryData,
         stats,
       }}
